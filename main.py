@@ -12,77 +12,69 @@ import logging
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-CAL_URL = "https://www.myfxbook.com/forex-economic-calendar"
-FETCH_INTERVAL = int(os.getenv("FETCH_INTERVAL_SEC", 300))
+CAL_URL = "https://www.forexfactory.com/calendar"
+FETCH_INTERVAL = int(os.getenv("FETCH_INTERVAL_SEC", 1))  # check often
 LAST_EVENT_FILE = "last_event.txt"
 
 bot = Bot(token=BOT_TOKEN)
 translator = Translator()
 
-logging.basicConfig(level=logging.INFO, filename="cal.log",
-                    format='%(asctime)s %(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, filename="ffcal.log",
+                    format="%(asctime)s %(levelname)s: %(message)s")
 
 def read_last_event():
     if not os.path.exists(LAST_EVENT_FILE):
         return None
-    with open(LAST_EVENT_FILE, 'r', encoding='utf-8') as f:
+    with open(LAST_EVENT_FILE, "r", encoding="utf-8") as f:
         return f.read().strip()
 
 def write_last_event(ev):
-    with open(LAST_EVENT_FILE, 'w', encoding='utf-8') as f:
+    with open(LAST_EVENT_FILE, "w", encoding="utf-8") as f:
         f.write(ev)
 
 def fetch_calendar_release():
     last = read_last_event()
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    resp = requests.get(CAL_URL, headers=headers, timeout=10)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    resp = requests.get(CAL_URL, headers=headers, timeout=15)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.content, 'html.parser')
+    soup = BeautifulSoup(resp.content, "html.parser")
 
-    rows = soup.find_all("tr", class_="calendar-row")
+    rows = soup.find_all("tr", class_="calendar__row")
     for row in rows:
-        cells = row.find_all("td")
-        if len(cells) >= 6:
-            actual = cells[5].get_text(strip=True)
-            if actual not in ("", "—", "-"):
-                date = cells[0].get_text(strip=True)
-                time_ = cells[1].get_text(strip=True)
-                currency = cells[2].get_text(strip=True)
-                event_name = cells[3].get_text(strip=True)
-                identifier = f"{date} {time_} {event_name}"
+        actual_td = row.find("td", class_="calendar_cell calendar_actual")
+        if actual_td:
+            actual = actual_td.get_text(strip=True)
+            if actual and actual not in ("", "-", "—"):
+                time_td = row.find("td", class_="calendar_cell calendar_time")
+                time_str = time_td.get_text(strip=True) if time_td else "Unknown Time"
+                currency_td = row.find("td", class_="calendar_cell calendar_currency")
+                currency = currency_td.get_text(strip=True) if currency_td else "Unknown Currency"
+                event_td = row.find("td", class_="calendar_cell calendar_event")
+                event = event_td.get_text(strip=True) if event_td else "Unknown Event"
+                identifier = f"{currency}-{event}-{actual}"
                 if identifier == last:
                     continue
                 write_last_event(identifier)
-                try:
-                    event_si = translator.translate(event_name, dest='si').text
-                except Exception as e:
-                    event_si = "පරිවර්තනය අසාර්ථකයි"
-                    logging.error(f"Translate error: {e}")
 
-                sri = pytz.timezone("Asia/Colombo")
-                now = datetime.now(sri)
-                dt = now.strftime("%Y-%m-%d %I:%M %p")
+                event_si = translator.translate(event, dest="si").text
+                sri_time = datetime.now(pytz.timezone("Asia/Colombo")).strftime("%Y-%m-%d %I:%M %p")
 
-                msg = f"""📊 Economic Release Event
+                msg = f"""📢 Economic News Released!
 
-🕒 Date & Time: {date} {time_}
-
-💱 Currency: {currency}
-
-📝 Event: {event_name}
-
-🔥 සිංහල: {event_si}
-
-⌚ Announcement Time (Local): {dt}
+🕒 Local Time: {sri_time}
+💱 Country: {currency}
+📝 Event: {event}
+🌐 සිංහල: {event_si}
+📊 Actual: {actual}
+⏰ News Time: {time_str}
 """
                 bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
-                logging.info(f"Sent event: {identifier}")
-    return
+                logging.info(f"Sent: {identifier}")
 
 if __name__ == "__main__":
     while True:
         try:
             fetch_calendar_release()
         except Exception as e:
-            logging.error(f"Error in loop: {e}")
+            logging.error(f"Error fetching calendar: {e}")
         time.sleep(FETCH_INTERVAL)
