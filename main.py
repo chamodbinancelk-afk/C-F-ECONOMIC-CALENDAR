@@ -9,111 +9,80 @@ import os
 import time
 import logging
 
-# Load environment variables
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-FF_URL = os.getenv("FOREXFACTORY_NEWS_URL", "https://www.forexfactory.com/news")
-FETCH_INTERVAL = int(os.getenv("FETCH_INTERVAL_SEC", 1))
-LAST_HEADLINE_FILE = "last_headline.txt"
+CAL_URL = "https://www.myfxbook.com/forex-economic-calendar"
+FETCH_INTERVAL = int(os.getenv("FETCH_INTERVAL_SEC", 300))
+LAST_EVENT_FILE = "last_event.txt"
 
 bot = Bot(token=BOT_TOKEN)
 translator = Translator()
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, filename="bot.log",
+logging.basicConfig(level=logging.INFO, filename="cal.log",
                     format='%(asctime)s %(levelname)s: %(message)s')
 
-def read_last_headline():
-    if not os.path.exists(LAST_HEADLINE_FILE):
+def read_last_event():
+    if not os.path.exists(LAST_EVENT_FILE):
         return None
-    with open(LAST_HEADLINE_FILE, 'r', encoding='utf-8') as f:
+    with open(LAST_EVENT_FILE, 'r', encoding='utf-8') as f:
         return f.read().strip()
 
-def write_last_headline(headline):
-    with open(LAST_HEADLINE_FILE, 'w', encoding='utf-8') as f:
-        f.write(headline)
+def write_last_event(ev):
+    with open(LAST_EVENT_FILE, 'w', encoding='utf-8') as f:
+        f.write(ev)
 
-def fetch_latest_news():
-    last = read_last_headline()
+def fetch_calendar_release():
+    last = read_last_event()
     headers = {'User-Agent': 'Mozilla/5.0'}
-    try:
-        resp = requests.get(FF_URL, headers=headers, timeout=10)
-        resp.raise_for_status()
-    except Exception as e:
-        logging.error(f"Failed to fetch news page: {e}")
-        return
-
+    resp = requests.get(CAL_URL, headers=headers, timeout=10)
+    resp.raise_for_status()
     soup = BeautifulSoup(resp.content, 'html.parser')
 
-    news_link_tag = soup.find('a', href=lambda href: isinstance(href, str) and href.startswith('/news/') and not href.endswith('/hit'))
-    if not news_link_tag:
-        logging.warning("News element not found!")
-        return
+    rows = soup.find_all("tr", class_="calendar-row")
+    for row in rows:
+        cells = row.find_all("td")
+        if len(cells) >= 6:
+            actual = cells[5].get_text(strip=True)
+            if actual not in ("", "—", "-"):
+                date = cells[0].get_text(strip=True)
+                time_ = cells[1].get_text(strip=True)
+                currency = cells[2].get_text(strip=True)
+                event_name = cells[3].get_text(strip=True)
+                identifier = f"{date} {time_} {event_name}"
+                if identifier == last:
+                    continue
+                write_last_event(identifier)
+                try:
+                    event_si = translator.translate(event_name, dest='si').text
+                except Exception as e:
+                    event_si = "පරිවර්තනය අසාර්ථකයි"
+                    logging.error(f"Translate error: {e}")
 
-    headline = news_link_tag.get_text(strip=True)
-    if headline == last:
-        return
+                sri = pytz.timezone("Asia/Colombo")
+                now = datetime.now(sri)
+                dt = now.strftime("%Y-%m-%d %I:%M %p")
 
-    write_last_headline(headline)
+                msg = f"""📊 Economic Release Event
 
-    news_url = "https://www.forexfactory.com" + news_link_tag['href']
+🕒 Date & Time: {date} {time_}
 
-    try:
-        news_resp = requests.get(news_url, headers=headers, timeout=10)
-        news_resp.raise_for_status()
-    except Exception as e:
-        logging.error(f"Failed to fetch news detail page: {e}")
-        return
+💱 Currency: {currency}
 
-    news_soup = BeautifulSoup(news_resp.content, 'html.parser')
+📝 Event: {event_name}
 
-    img_tag = news_soup.find('img', class_='attach')
-    img_url = img_tag['src'] if img_tag else None
+🔥 සිංහල: {event_si}
 
-    desc_tag = news_soup.find('p', class_='news__copy')
-    description = desc_tag.get_text(strip=True) if desc_tag else "No description found."
-
-    try:
-        headline_si = translator.translate(headline, dest='si').text
-    except Exception as e:
-        headline_si = "Translation failed"
-        logging.error(f"Headline translation error: {e}")
-
-    try:
-        description_si = translator.translate(description, dest='si').text
-    except Exception as e:
-        description_si = "Description translation failed"
-        logging.error(f"Description translation error: {e}")
-
-    sri_lanka_tz = pytz.timezone('Asia/Colombo')
-    now = datetime.now(sri_lanka_tz)
-    date_time = now.strftime('%Y-%m-%d %I:%M %p')
-
-    message = f"""📰 *Fundamental News (සිංහල)*
-    
-
-⏰ *Date & Time:* {date_time}
-
-🌎 *Headline:* {headline}
-
-
-🔥 *සිංහල:* {description_si}
-
-
-🚀 *Dev :* Mr Chamo 🇱🇰
+⌚ Announcement Time (Local): {dt}
 """
-
-    try:
-        if img_url:
-            bot.send_photo(chat_id=CHAT_ID, photo=img_url, caption=message, parse_mode='Markdown')
-        else:
-            bot.send_message(chat_id=CHAT_ID, text=message, parse_mode='Markdown')
-        logging.info(f"Posted: {headline}")
-    except Exception as e:
-        logging.error(f"Failed to send message: {e}")
+                bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+                logging.info(f"Sent event: {identifier}")
+    return
 
 if __name__ == "__main__":
     while True:
-        fetch_latest_news()
+        try:
+            fetch_calendar_release()
+        except Exception as e:
+            logging.error(f"Error in loop: {e}")
         time.sleep(FETCH_INTERVAL)
