@@ -21,10 +21,18 @@ def get_latest_event():
 
     for row in rows[::-1]:  # Check latest first
         event_id = row.get("data-event-id")
-        country = row.get("data-country")
-        time_str = row.find("td", class_="calendar__time").text.strip()
-        title = row.find("td", class_="calendar__event").text.strip()
-        actual = row.find("td", class_="calendar__actual").text.strip()
+        currency_td = row.find("td", class_="calendar__currency")
+        time_td = row.find("td", class_="calendar__time")
+        title_td = row.find("td", class_="calendar__event")
+        actual_td = row.find("td", class_="calendar__actual")
+        
+        if not time_td or not title_td or not actual_td or not currency_td:
+            continue
+            
+        time_str = time_td.text.strip()
+        title = title_td.text.strip()
+        actual = actual_td.text.strip()
+        currency = currency_td.text.strip()
 
         if event_id and actual and actual != "-":
             return {
@@ -42,11 +50,14 @@ def send_event(event):
     msg = f"""📊 Economic Event Alert!
 
 🕒 Date & Time: {now}
+
 🌍 Country: {event['country']}
+
 📌 Event: {event['title']}
+
 📈 Actual: {event['actual']}
 
-🔗 forexfactory.com/calendar
+🚀 Dev: Mr Chamo 🇱🇰
 """
     bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
@@ -65,4 +76,4 @@ if __name__ == "__main__":
                 sent_event_ids.add(event['id'])
         except Exception as e:
             print("Error:", e)
-        time.sleep(60)
+        time.sleep(1)
