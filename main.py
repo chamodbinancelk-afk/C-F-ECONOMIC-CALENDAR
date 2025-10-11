@@ -63,7 +63,9 @@ def get_latest_event():
         }
     return None
 
-impact = event['impact']
+def send_event(event):
+    now = datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S')
+    impact = event['impact']
 if impact == "High Impact Expected":
     impact_level = "🔴 High"
 elif impact == "Medium Impact Expected":
