@@ -39,9 +39,9 @@ def get_latest_event():
         title_td = row.find("td", class_="calendar__event")
         actual_td = row.find("td", class_="calendar__actual")
         previous_td = row.find("td", class_="calendar__previous")
-        impact_td = row.find("td", class_="impact")
+        impact_td = row.find("td", class_="calendar__impact")
 
-        if not all([event_id, currency_td, title_td, time_td, actual_td]):
+        if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td, impact_td]):
             continue
 
         actual = actual_td.text.strip()
@@ -58,14 +58,20 @@ def get_latest_event():
             "time": time_td.text.strip(),
             "actual": actual,
             "previous": previous,
-            "impact": impact
+            "impact": impact_td.text.strip()
         }
     return None
 
-def send_event(event):
-    tz = pytz.timezone('Asia/Colombo')
-    now = datetime.now(tz).strftime('%Y-%m-%d %I:%M %p')
-
+impact = event['impact']
+if impact == "High Impact Expected":
+    impact_level = "🔴 High"
+elif impact == "Medium Impact Expected":
+    impact_level = "🟠 Medium"
+elif impact == "Low Impact Expected":
+    impact_level = "🟢 Low"
+else:
+    impact_level = "⚪ Unknown"
+    
     comparison, reaction = analyze_comparison(event['actual'], event['previous'])
 
     msg = f"""🛑 *Breaking News* 📰
@@ -76,7 +82,7 @@ def send_event(event):
 
 📌 *Headline:* {event['title']}
 
-🔥 *Impact:* {event['impact']}
+🔥 *Impact:* {event['impact_level']}
 
 📈 *Actual:* {event['actual']}
 📉 *Previous:* {event['previous']}
