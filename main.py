@@ -85,7 +85,7 @@ else:
 
 📌 *Headline:* {event['title']}
 
-🔥 *Impact:* {event['impact']}
+🔥 *Impact:* {event['impact_level']}
 
 📈 *Actual:* {event['actual']}
 📉 *Previous:* {event['previous']}
