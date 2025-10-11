@@ -51,7 +51,7 @@ def get_latest_event():
         if not actual or actual == "-":
             continue
 
-       impact_span = impact_td.find('span', title=True)
+        impact_span = impact_td.find('span', title=True)
         
         if impact_span:
             impact_text = impact_span['title']
@@ -73,11 +73,11 @@ def send_event(event):
     now = datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S')
     
     impact = event['impact']
-    if impact_text == "High Impact Expected":
+    if impact == "High Impact Expected":
         impact_level = "🔴 High"
-    elif impact_text == "Medium Impact Expected":
+    elif impact == "Medium Impact Expected":
         impact_level = "🟠 Medium"
-    elif impact_text == "Low Impact Expected":
+    elif impact == "Low Impact Expected":
         impact_level = "🟢 Low"
     else:
         impact_level = "⚪ Unknown"
@@ -85,7 +85,6 @@ def send_event(event):
     comparison, reaction = analyze_comparison(event['actual'], event['previous'])
 
     msg = f"""🛑 *Breaking News* 📰
-    
 
 ⏰ *Date & Time:* {now}
 
