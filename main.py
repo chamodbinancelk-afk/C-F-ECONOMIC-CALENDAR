@@ -41,6 +41,7 @@ def get_latest_event():
         title_td = row.find("td", class_="calendar__event")
         actual_td = row.find("td", class_="calendar__actual")
         previous_td = row.find("td", class_="calendar__previous")
+        impact_td = row.find('td', class_='calendar_cell calendar_impact')
 
         if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td, impact_td]):
             continue
@@ -50,7 +51,6 @@ def get_latest_event():
         if not actual or actual == "-":
             continue
 
-       impact_td = row.find('td', class_='calendar_cell calendar_impact')
        impact_span = impact_td.find('span', title=True)
 
 if impact_span:
