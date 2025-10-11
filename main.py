@@ -1,3 +1,5 @@
+# Forex News Telegram Bot
+
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
@@ -39,7 +41,6 @@ def get_latest_event():
         title_td = row.find("td", class_="calendar__event")
         actual_td = row.find("td", class_="calendar__actual")
         previous_td = row.find("td", class_="calendar__previous")
-        impact_td = row.find("td", class_="calendar__impact")
 
         if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td, impact_td]):
             continue
@@ -49,8 +50,13 @@ def get_latest_event():
         if not actual or actual == "-":
             continue
 
-        impact_span = impact_td.find('span')
-        impact = impact_span['title'] if impact_span and 'title' in impact_span.attrs else 'Unknown'
+       impact_td = row.find('td', class_='calendar_cell calendar_impact')
+       impact_span = impact_td.find('span', title=True)
+
+if impact_span:
+    impact_text = impact_span['title']  # e.g. "High Impact Expected"
+else:
+    impact_text = "Unknown"
 
         return {
             "id": event_id,
@@ -65,19 +71,21 @@ def get_latest_event():
 
 def send_event(event):
     now = datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S')
+    
     impact = event['impact']
-if impact == "High Impact Expected":
-    impact_level = "🔴 High"
-elif impact == "Medium Impact Expected":
-    impact_level = "🟠 Medium"
-elif impact == "Low Impact Expected":
-    impact_level = "🟢 Low"
-else:
-    impact_level = "⚪ Unknown"
+    if impact_text == "High Impact Expected":
+        impact_level = "🔴 High"
+    elif impact_text == "Medium Impact Expected":
+        impact_level = "🟠 Medium"
+    elif impact_text == "Low Impact Expected":
+        impact_level = "🟢 Low"
+    else:
+        impact_level = "⚪ Unknown"
     
     comparison, reaction = analyze_comparison(event['actual'], event['previous'])
 
     msg = f"""🛑 *Breaking News* 📰
+    
 
 ⏰ *Date & Time:* {now}
 
