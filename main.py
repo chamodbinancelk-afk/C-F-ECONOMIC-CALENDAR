@@ -41,7 +41,7 @@ def get_latest_event():
         title_td = row.find("td", class_="calendar__event")
         actual_td = row.find("td", class_="calendar__actual")
         previous_td = row.find("td", class_="calendar__previous")
-        impact_td = row.find('td', class_='calendar_cell calendar_impact')
+        impact_td = row.find('td', class_='calendar__impact')
 
         if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td, impact_td]):
             continue
@@ -52,11 +52,11 @@ def get_latest_event():
             continue
 
        impact_span = impact_td.find('span', title=True)
-
-if impact_span:
-    impact_text = impact_span['title']  # e.g. "High Impact Expected"
-else:
-    impact_text = "Unknown"
+        
+        if impact_span:
+            impact_text = impact_span['title']
+        else:
+            impact_text = "Unknown"
 
         return {
             "id": event_id,
@@ -65,7 +65,7 @@ else:
             "time": time_td.text.strip(),
             "actual": actual,
             "previous": previous,
-            "impact": impact
+            "impact": impact_text
         }
     return None
 
