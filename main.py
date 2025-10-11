@@ -49,7 +49,8 @@ def get_latest_event():
         if not actual or actual == "-":
             continue
 
-        impact = impact_td.find('span')['title'] if impact_td and impact_td.find('span') else "Unknown"
+        impact_span = impact_td.find('span')
+        impact = impact_span['title'] if impact_span and 'title' in impact_span.attrs else 'Unknown'
 
         return {
             "id": event_id,
@@ -58,7 +59,7 @@ def get_latest_event():
             "time": time_td.text.strip(),
             "actual": actual,
             "previous": previous,
-            "impact": impact_td.text.strip()
+            "impact": impact
         }
     return None
 
@@ -78,7 +79,7 @@ else:
 
 ⏰ *Date & Time:* {now}
 
-🌍 *Country:* {event['currency']}
+🌍 *Currency:* {event['currency']}
 
 📌 *Headline:* {event['title']}
 
