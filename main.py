@@ -229,7 +229,7 @@ def run_bot_loop():
             print(f"General Error in Bot Loop: {e}")
         
         # 60 තත්පර පොරොත්තු කාලය (Scraping rate අඩු කිරීම සඳහා)
-        time.sleep(60)
+        time.sleep(10)
 
 # ----------------------------------------------------
 # 5. Flask Routes (Web Server එක)
