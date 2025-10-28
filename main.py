@@ -1,5 +1,3 @@
-# Forex News Telegram Bot (Full Code with Robust Impact Detection)
-
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
@@ -7,19 +5,28 @@ from datetime import datetime
 import pytz
 import time
 import os
+from flask import Flask
+from threading import Thread
 
 # ----------------------------------------------------
 # 1. Configuration (සැකසීම්)
 # ----------------------------------------------------
 
-# Environment variables must be set for security and proper function.
+# Environment variables වලින් Token සහ Chat ID ලබා ගනී
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 URL = "https://www.forexfactory.com/calendar"
 
-# Initialize Bot and track sent events
+# Bot object එක නිර්මාණය කිරීම
+if not BOT_TOKEN:
+    print("Error: TELEGRAM_BOT_TOKEN environment variable not set.")
+    exit()
+
 bot = Bot(token=BOT_TOKEN)
+# දැනටමත් යවා ඇති event IDs ගබඩා කිරීම සඳහා set එක
 sent_event_ids = set()
+
+app = Flask(__name__) 
 
 # ----------------------------------------------------
 # 2. Helper Functions (උපකාරක ශ්‍රිත)
@@ -27,52 +34,60 @@ sent_event_ids = set()
 
 def analyze_comparison(actual, previous):
     """
-    ප්‍රකාශයට පත් කළ Actual අගය Previous අගය සමඟ සන්සන්දනය කර වෙළඳපොළ ප්‍රතිචාරය අනාවැකි කරයි.
+    පෙර දත්ත සහ වත්මන් දත්ත සංසන්දනය කර වෙළඳපොළ ප්‍රතිචාරය අනාවැකි පළ කරයි.
     """
     try:
-        # '%' සලකුණු ඉවත් කර දත්ත float ලෙස පරිවර්තනය කරයි
+        # ප්‍රතිශත ලකුණු ඉවත් කර float අගයක් බවට පත් කිරීම
         a = float(actual.replace('%','').strip())
         p = float(previous.replace('%','').strip())
         
+        # සාමාන්‍යයෙන්, Actual > Previous යනු මුදල් ඒකකයට ධනාත්මක බලපෑමකි.
         if a > p:
-            return f"පෙර දත්තවලට වඩා ඉහළයි ({actual}%)", "📉 Forex සහ Crypto වෙළඳපොළ පහළට යා හැකියි"
+            # නිවැරදි කළ අනාවැකිය: ඉහළ අගයක් මුදල් ඒකකය ශක්තිමත් කිරීමට හේතු විය හැක.
+            return f"පෙර දත්තවලට වඩා ඉහළයි (Actual: {actual})", "📈 ධනාත්මක බලපෑමක්, වෙළඳපොළ ඉහළට යා හැකියි"
         elif a < p:
-            return f"පෙර දත්තවලට වඩා පහළයි ({actual}%)", "📈 Forex සහ Crypto වෙළඳපොළ ඉහළට යා හැකියි"
+            # නිවැරදි කළ අනාවැකිය: පහළ අගයක් මුදල් ඒකකය දුර්වල කිරීමට හේතු විය හැක.
+            return f"පෙර දත්තවලට වඩා පහළයි (Actual: {actual})", "📉 සෘණාත්මක බලපෑමක්, වෙළඳපොළ පහළට යා හැකියි"
         else:
-            return f"පෙර දත්තවලට සමානයි ({actual}%)", "⚖ Forex සහ Crypto වෙළඳපොළ ස්ථාවරයෙහි පවතී"
-    except:
-        # දත්ත කියවීමේ දෝෂයක් ඇත්නම්
-        return f"Actual: {actual}", "🔍 වෙළඳපොළ ප්‍රතිචාර අනාවැකි කළ නොහැක"
+            return f"පෙර දත්තවලට සමානයි (Actual: {actual})", "⚖️ වෙළඳපොළ ප්‍රතිචාරය ස්ථාවරයෙහි පවතී"
+    except ValueError:
+        # float බවට හැරවිය නොහැකි දත්ත සඳහා
+        return f"Actual: {actual}", "🔍 දත්ත සංසන්දනය කළ නොහැක, වෙළඳපොළ ප්‍රතිචාර අනාවැකි පළ නොවේ"
+    except Exception as e:
+        print(f"Error in analyze_comparison: {e}")
+        return f"Actual: {actual}", "❌ අනාවැකි දෝෂයක්"
+
 
 def get_impact(row):
     """
     Forex Factory calendar row එකකින් impact level එක ලබා ගනී.
-    'title' attribute එක හෝ CSS class එක පරීක්ෂා කරයි.
     """
     impact_td = row.find('td', class_='calendar__impact')
     
     if not impact_td:
         return "Unknown"
 
-    # 1. 'title' attribute එක සහිත span element එක සොයා බලයි
+    # 'title' attribute එක හරහා impact එක ලබා ගැනීමට ප්‍රමුඛත්වය දීම
     impact_span = impact_td.find('span', title=True)
     
-    if impact_span:
+    if impact_span and impact_span['title'].strip():
         impact = impact_span['title'].strip()
-        if impact:
-            return impact
+        return impact
 
-    # 2. Fallback: CSS class එකෙන් color එක පරීක්ෂා කරයි
+    # class attribute හරහා fallback
     impact_span_fallback = impact_td.find('span')
     
     if impact_span_fallback:
         class_attr = impact_span_fallback.get('class', [])
         
-        if 'ff-impact-red' in class_attr:
+        # High Impact (රතු)
+        if any('ff-impact-red' in c for c in class_attr):
             return "High Impact Expected"
-        elif 'ff-impact-ora' in class_attr:
+        # Medium Impact (තැඹිලි)
+        elif any('ff-impact-ora' in c for c in class_attr):
             return "Medium Impact Expected"
-        elif 'ff-impact-yel' in class_attr:
+        # Low Impact (කහ)
+        elif any('ff-impact-yel' in c for c in class_attr):
             return "Low Impact Expected"
 
     return "Unknown"
@@ -82,43 +97,56 @@ def get_impact(row):
 # ----------------------------------------------------
 
 def get_latest_event():
-    """
-    Forex Factory වෙතින් නවතම සම්පූර්ණ කරන ලද ප්‍රවෘත්ති Event එක ලබා ගනී.
-    """
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    resp = requests.get(URL, headers=headers)
+    """Forex Factory වෙතින් නවතම සම්පූර්ණ වූ (Actual අගය සහිත) event එක ලබා ගනී."""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    try:
+        resp = requests.get(URL, headers=headers)
+        resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Request Error: {e}")
+        return None
+
     soup = BeautifulSoup(resp.text, "html.parser")
+    # 'calendar__row--is-past' සහිත පේළි පමණක් සලකා බැලීම
     rows = soup.find_all("tr", class_="calendar__row")
 
-    # අලුත්ම Events (පහළ සිට ඉහළට) පරීක්ෂා කරයි.
+    # අලුත්ම event එක සොයා ගැනීම සඳහා ආපසු හැරවීම
     for row in rows[::-1]:
         event_id = row.get("data-event-id")
+        
+        # මේක අනාගත event එකක් නම්, සලකා බලන්නේ නැත
+        if 'calendar__row--is-future' in row.get('class', []):
+            continue
+
         currency_td = row.find("td", class_="calendar__currency")
         time_td = row.find("td", class_="calendar__time")
         title_td = row.find("td", class_="calendar__event")
         actual_td = row.find("td", class_="calendar__actual")
         previous_td = row.find("td", class_="calendar__previous")
-        impact_td = row.find('td', class_='calendar__impact')
-
-        # සියලුම අවශ්‍ය දත්ත තිබේදැයි පරීක්ෂා කරයි
-        if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td, impact_td]):
+        
+        if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td]):
             continue
 
         actual = actual_td.text.strip()
-        previous = previous_td.text.strip() if previous_td else "0"
+        previous = previous_td.text.strip() if previous_td else "-"
         
-        # Actual අගය තිබේදැයි සහ හිස් නොවේදැයි පරීක්ෂා කරයි (Event එක අවසන් වී ඇති බවට සහතික වීමට)
-        if not actual or actual == "-":
+        # Actual අගය නොමැති නම් (තවමත් නිවේදනය කර නොමැති නම්), මඟ හරින්න
+        if not actual or actual == "-" or actual == "":
             continue
 
-        # නව get_impact ශ්‍රිතය භාවිත කරයි
         impact_text = get_impact(row)
+        time_text = time_td.text.strip()
+        
+        # Time එකේ 'Tentative' තිබේ නම් එය 'Time' නොවේ. එය date cell එකක්.
+        if 'Tentative' in time_text:
+             continue
+
 
         return {
             "id": event_id,
             "currency": currency_td.text.strip(),
             "title": title_td.text.strip(),
-            "time": time_td.text.strip(),
+            "time": time_text,
             "actual": actual,
             "previous": previous,
             "impact": impact_text
@@ -126,18 +154,20 @@ def get_latest_event():
     return None
 
 def send_event(event):
-    """
-    සකස් කරන ලද පණිවිඩය Telegram වෙත යවයි.
-    """
-    # ශ්‍රී ලංකාවේ වේලාව
-    now = datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S')
+    """Telegram වෙත event details යවයි."""
+    if not CHAT_ID:
+        print("Error: TELEGRAM_CHAT_ID environment variable not set. Cannot send message.")
+        return
+
+    # ශ්‍රී ලංකා වේලාව (Colombo)
+    now = datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S %Z')
     
     impact = event['impact']
-    if impact == "High Impact Expected":
+    if "High" in impact:
         impact_level = "🔴 High"
-    elif impact == "Medium Impact Expected":
+    elif "Medium" in impact:
         impact_level = "🟠 Medium"
-    elif impact == "Low Impact Expected":
+    elif "Low" in impact:
         impact_level = "🟢 Low"
     else:
         impact_level = "⚪ Unknown"
@@ -146,7 +176,7 @@ def send_event(event):
 
     msg = f"""🛑 *Breaking News* 📰
 
-⏰ *Date & Time:* {now}
+⏰ *Colombo Time:* {now}
 
 🌍 *Currency:* {event['currency']}
 
@@ -154,33 +184,84 @@ def send_event(event):
 
 🔥 *Impact:* {impact_level}
 
+📊 *Data Comparison:* {comparison}
+
 📈 *Actual:* {event['actual']}
 📉 *Previous:* {event['previous']}
 
-🔍 *Details:* {comparison}
+🔮 *Market Forecast:* {reaction}
 
-📈 *Market Reaction Forecast:* {reaction}
-
-🚀 *Dev : Mr Chamo 🇱🇰*
+🚀 *Dev: Mr Chamo 🇱🇰*
 """
-    bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+    try:
+        bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Telegram Send Error: {e}")
 
 # ----------------------------------------------------
-# 4. Execution Block (ක්‍රියාත්මක කිරීම)
+# 4. Threaded Bot Loop (නොනවත්වා ක්‍රියාත්මක වන Bot කොටස)
 # ----------------------------------------------------
 
-if __name__ == "__main__":
-    print("Bot started...")
+def run_bot_loop():
+    """Bot Loop එක වෙනම Thread එකක ක්‍රියාත්මක කිරීමට."""
+    print("Forex Bot Loop Started. Checking every 60 seconds...")
+    # ආරම්භයේදී, දැනටමත් සම්පූර්ණ කර ඇති event id ටික ලබා ගනී.
+    # මේක නැවත යැවීම වැලැක්වීමට උපකාරී වේ.
+    initial_event = get_latest_event()
+    if initial_event:
+        sent_event_ids.add(initial_event['id'])
+        print(f"Initial event ID collected: {initial_event['id']}")
+        
     while True:
         try:
             event = get_latest_event()
-            # නවතම Event එකක් තිබේ නම් සහ එය දැනටමත් යවා නොමැති නම්
+            # event එකක් ලැබී ඇත්නම් සහ එය දැනටමත් යවා නොමැති නම්
             if event and event['id'] not in sent_event_ids:
                 send_event(event)
                 sent_event_ids.add(event['id'])
-                print(f"Sent Event ID: {event['id']} ({event['title']})")
+                print(f"Sent New Event ID: {event['id']} - {event['title']}")
+            # event එකක් ලැබී නොමැති නම්, බොහෝ විට දත්ත නැවත ලබා ගැනීමට ප්‍රමාද වැඩි නිසා
+            elif event:
+                # දැනටමත් යවා ඇති event එක නැවත log කරන්න
+                pass
+
         except Exception as e:
-            print("Error:", e)
+            print(f"General Error in Bot Loop: {e}")
         
-        # සර්වර් බර අඩු කිරීමට සහ Forex Factory හි නීති රීතිවලට අනුකූල වීමට කාලය වැඩි කරයි.
-        time.sleep(10)
+        # 60 තත්පර පොරොත්තු කාලය (Scraping rate අඩු කිරීම සඳහා)
+        time.sleep(60)
+
+# ----------------------------------------------------
+# 5. Flask Routes (Web Server එක)
+# ----------------------------------------------------
+
+@app.route('/')
+def hello():
+    """Bot status පෙන්වන්න සහ uptime monitoring සඳහා."""
+    return "Forex Bot is Running 24/7! (Checked last at: {}) 🚀".format(
+        datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S %Z')
+    ), 200
+
+@app.route('/status')
+def status():
+    """Bot status details."""
+    return {
+        "status": "running",
+        "events_sent": len(sent_event_ids),
+        "bot_name": "ForexNewsBot",
+        "last_checked": datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S %Z')
+    }, 200
+
+# ----------------------------------------------------
+# 6. Execution Block (ක්‍රියාත්මක කිරීම)
+# ----------------------------------------------------
+
+if __name__ == "__main__":
+    # Bot loop එක වෙනම thread එකක ආරම්භ කිරීම
+    t = Thread(target=run_bot_loop)
+    t.daemon = True
+    t.start()
+    
+    print("Web Server Starting on port 5000...")
+    # Flask web server එක ආරම්භ කිරීම
+    app.run(host="0.0.0.0", port=5000)
