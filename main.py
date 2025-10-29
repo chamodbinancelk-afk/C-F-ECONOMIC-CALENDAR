@@ -21,6 +21,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # Stable model එක භාවිතා කිරීමට යාවත්කාලීන කරන ලදී
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 URL = "https://www.forexfactory.com/calendar"
+# Flask Port එක Environment variable වෙතින් ලබා ගනී, නොමැතිනම් 5000
+PORT = int(os.getenv("PORT", 5000)) 
 
 # Bot object එක නිර්මාණය කිරීම
 if not BOT_TOKEN:
@@ -54,17 +56,16 @@ def get_ai_market_analysis(event):
         "Previous Value": event['previous']
     }
     
-    # සිංහලෙන් විශ්ලේෂණයක් ලබා ගැනීමට ප්‍රධාන Prompt එක සකස් කිරීම
+    # *** යාවත්කාලීන කරන ලද Prompt එක ***
     prompt_text = f"""
-    You are a highly experienced and objective Financial Market Analyst. Your task is to analyze the following economic data release and provide a clear, concise, and structured market impact analysis in a **mix of Sinhala and English (Singlish)**.
+    You are a highly experienced and objective Financial Market Analyst. Your task is to analyze the following economic data release and provide a clear, concise, and structured market impact analysis entirely in **Sinhala**.
 
     **Instructions:**
     1. Focus on the *Fundamental Interpretation* of the data (e.g., Is the news Hawkish/Dovish for the USD? Is the data inflationary/deflationary?).
-    2. Analyze the potential immediate impact on the relevant currency (Forex) and broader market sentiment (Crypto) using the following principles:
-        - Strong USD (Hawkish Policy/Good data) generally leads to a *downward* movement in major non-USD Forex pairs (like EUR/USD) and puts *downward* pressure on Crypto (Risk-off).
-        - Weak USD (Dovish Policy/Bad data, like a rate cut) generally leads to an *upward* movement in non-USD Forex pairs and *upward* pressure on Crypto (Risk-on).
-    3. The response must be a single, detailed paragraph (maximum 100 words) in a **mix of Sinhala and English (Singlish)**, using English for technical terms like 'Hawkish', 'Dovish', 'Risk-on', 'Inflation', etc.
-    4. Start the analysis with a clear summary sentence.
+    2. The response must be a single, detailed paragraph (maximum 100 words) in **Sinhala**.
+    3. **ONLY** use English for the following technical terms: 'Hawkish', 'Dovish', 'Risk-on', 'Risk-off', 'Inflation', 'Deflation', 'Interest Rate', 'GDP', 'CPI', 'PMI', 'NFP'. All other words, especially explanations, must be in Sinhala.
+    4. Start the analysis with a clear, engaging summary sentence in Sinhala.
+    5. Analyze the potential immediate impact on the relevant currency (Forex) and broader market sentiment (Crypto).
 
     **Economic Data for Analysis:**
     {json.dumps(data_points, indent=2)}
@@ -75,8 +76,9 @@ def get_ai_market_analysis(event):
         "contents": [{"parts": [{"text": prompt_text}]}],
         # Google Search Tool එක භාවිතයෙන් සත්‍ය වෙළඳපොළ ප්‍රතිචාර පිළිබඳව දැනුම ලබා ගැනීමට
         "tools": [{"google_search": {} }], 
-        "systemInstruction": {
-            "parts": [{"text": "You are an expert market analyst providing fundamental analysis in a mix of Sinhala and English (Singlish). Keep the response professional and objective."}]
+        # *** යාවත්කාලීන කරන ලද System Instruction එක ***
+        "config": {
+            "systemInstruction": "You are an expert market analyst providing fundamental analysis entirely in Sinhala. Only technical terms like Hawkish, Dovish, Inflation, Risk-on, etc., should be kept in English."
         },
     }
     
@@ -251,7 +253,7 @@ def send_event(event):
 📉 *Previous:* {event['previous']}
 
 ---
-🧠 *AI Market Analysis (සිංහල/English):*
+🧠 *AI Market Analysis (සිංහල):*
 {ai_analysis_text}
 ---
 
@@ -342,6 +344,6 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
     
-    print("Web Server Starting on port 5000...")
+    print(f"Web Server Starting on port {PORT}...")
     # Flask web server එක ආරම්භ කිරීම
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=PORT)
