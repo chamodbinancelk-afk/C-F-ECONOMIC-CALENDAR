@@ -5,6 +5,7 @@ from datetime import datetime
 import pytz
 import time
 import os
+import json
 from flask import Flask
 from threading import Thread
 
@@ -12,9 +13,13 @@ from threading import Thread
 # 1. Configuration (සැකසීම්)
 # ----------------------------------------------------
 
-# Environment variables වලින් Token සහ Chat ID ලබා ගනී
+# Environment variables වලින් Tokens සහ IDs ලබා ගනී
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Gemini API Key එක environment variable වෙතින් ලබා ගනී
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") 
+# Stable model එක භාවිතා කිරීමට යාවත්කාලීන කරන ලදී
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 URL = "https://www.forexfactory.com/calendar"
 
 # Bot object එක නිර්මාණය කිරීම
@@ -32,30 +37,85 @@ app = Flask(__name__)
 # 2. Helper Functions (උපකාරක ශ්‍රිත)
 # ----------------------------------------------------
 
-def analyze_comparison(actual, previous):
+def get_ai_market_analysis(event):
     """
-    පෙර දත්ත සහ වත්මන් දත්ත සංසන්දනය කර වෙළඳපොළ ප්‍රතිචාරය අනාවැකි පළ කරයි.
+    සිදු වූ ආර්ථික ප්‍රකාශනය Gemini AI වෙත යවා වෙළඳපොළ විශ්ලේෂණයක් සිංහලෙන් ලබා ගනී.
     """
-    try:
-        # ප්‍රතිශත ලකුණු ඉවත් කර float අගයක් බවට පත් කිරීම
-        a = float(actual.replace('%','').strip())
-        p = float(previous.replace('%','').strip())
+    if not GEMINI_API_KEY:
+        return "❌ *Gemini API Key* නොමැත. AI විශ්ලේෂණය කළ නොහැක."
         
-        # සාමාන්‍යයෙන්, Actual > Previous යනු මුදල් ඒකකයට ධනාත්මක බලපෑමකි.
-        if a > p:
-            # නිවැරදි කළ අනාවැකිය: ඉහළ අගයක් මුදල් ඒකකය ශක්තිමත් කිරීමට හේතු විය හැක.
-            return f"පෙර දත්තවලට වඩා ඉහළයි (Actual: {actual})", "📈 ධනාත්මක බලපෑමක්, වෙළඳපොළ ඉහළට යා හැකියි"
-        elif a < p:
-            # නිවැරදි කළ අනාවැකිය: පහළ අගයක් මුදල් ඒකකය දුර්වල කිරීමට හේතු විය හැක.
-            return f"පෙර දත්තවලට වඩා පහළයි (Actual: {actual})", "📉 සෘණාත්මක බලපෑමක්, වෙළඳපොළ පහළට යා හැකියි"
-        else:
-            return f"පෙර දත්තවලට සමානයි (Actual: {actual})", "⚖️ වෙළඳපොළ ප්‍රතිචාරය ස්ථාවරයෙහි පවතී"
-    except ValueError:
-        # float බවට හැරවිය නොහැකි දත්ත සඳහා
-        return f"Actual: {actual}", "🔍 දත්ත සංසන්දනය කළ නොහැක, වෙළඳපොළ ප්‍රතිචාර අනාවැකි පළ නොවේ"
-    except Exception as e:
-        print(f"Error in analyze_comparison: {e}")
-        return f"Actual: {actual}", "❌ අනාවැකි දෝෂයක්"
+    # AI වෙත යැවීමට අවශ්‍ය දත්ත
+    data_points = {
+        "Headline": event['title'],
+        "Currency": event['currency'],
+        "Impact Level": event['impact'],
+        "Actual Value": event['actual'],
+        "Forecast Value": event['forecast'],
+        "Previous Value": event['previous']
+    }
+    
+    # සිංහලෙන් විශ්ලේෂණයක් ලබා ගැනීමට ප්‍රධාන Prompt එක සකස් කිරීම
+    prompt_text = f"""
+    You are a highly experienced and objective Financial Market Analyst. Your task is to analyze the following economic data release and provide a clear, concise, and structured market impact analysis in a **mix of Sinhala and English (Singlish)**.
+
+    **Instructions:**
+    1. Focus on the *Fundamental Interpretation* of the data (e.g., Is the news Hawkish/Dovish for the USD? Is the data inflationary/deflationary?).
+    2. Analyze the potential immediate impact on the relevant currency (Forex) and broader market sentiment (Crypto) using the following principles:
+        - Strong USD (Hawkish Policy/Good data) generally leads to a *downward* movement in major non-USD Forex pairs (like EUR/USD) and puts *downward* pressure on Crypto (Risk-off).
+        - Weak USD (Dovish Policy/Bad data, like a rate cut) generally leads to an *upward* movement in non-USD Forex pairs and *upward* pressure on Crypto (Risk-on).
+    3. The response must be a single, detailed paragraph (maximum 100 words) in a **mix of Sinhala and English (Singlish)**, using English for technical terms like 'Hawkish', 'Dovish', 'Risk-on', 'Inflation', etc.
+    4. Start the analysis with a clear summary sentence.
+
+    **Economic Data for Analysis:**
+    {json.dumps(data_points, indent=2)}
+    """
+    
+    # API Payload එක
+    payload = {
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        # Google Search Tool එක භාවිතයෙන් සත්‍ය වෙළඳපොළ ප්‍රතිචාර පිළිබඳව දැනුම ලබා ගැනීමට
+        "tools": [{"google_search": {} }], 
+        "systemInstruction": {
+            "parts": [{"text": "You are an expert market analyst providing fundamental analysis in a mix of Sinhala and English (Singlish). Keep the response professional and objective."}]
+        },
+    }
+    
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    
+    # API Call එක
+    for attempt in range(3): # Exponential backoff for robustness
+        try:
+            # Timeout එක 30s දක්වා වැඩි කරන ලදී
+            response = requests.post(f"{GEMINI_API_URL}?key={GEMINI_API_KEY}", headers=headers, json=payload, timeout=30)
+            response.raise_for_status() # HTTP errors raise exception
+            
+            result = response.json()
+            
+            if result.get('candidates') and result['candidates'][0].get('content'):
+                ai_text = result['candidates'][0]['content']['parts'][0]['text']
+                return ai_text
+            
+            return "❌ AI විශ්ලේෂණය ලබා දීමට අපොහොසත් විය (Empty response)."
+
+        except requests.exceptions.HTTPError as http_err:
+            print(f"HTTP error occurred on AI analysis: {http_err} (Status Code: {response.status_code})")
+            if response.status_code in [429, 503] and attempt < 2:
+                # Retry on rate limit or server error
+                sleep_time = 2 ** attempt
+                print(f"Retrying AI call in {sleep_time} seconds...")
+                time.sleep(sleep_time)
+            else:
+                return f"❌ AI විශ්ලේෂණය දෝෂ සහිතයි. (HTTP {response.status_code})"
+        except requests.exceptions.RequestException as req_err:
+            print(f"Request error occurred on AI analysis: {req_err}")
+            return "❌ AI විශ්ලේෂණය සම්බන්ධතා දෝෂයකින් අසාර්ථක විය."
+        except Exception as e:
+            print(f"Unknown error in AI analysis: {e}")
+            return "❌ AI විශ්ලේෂණය ලබා දීමට අපොහොසත් විය."
+
+    return "❌ AI විශ්ලේෂණය ලබා දීමට නැවත උත්සාහයන් තුනම අසාර්ථක විය."
 
 
 def get_impact(row):
@@ -67,14 +127,12 @@ def get_impact(row):
     if not impact_td:
         return "Unknown"
 
-    # 'title' attribute එක හරහා impact එක ලබා ගැනීමට ප්‍රමුඛත්වය දීම
     impact_span = impact_td.find('span', title=True)
     
     if impact_span and impact_span['title'].strip():
         impact = impact_span['title'].strip()
         return impact
 
-    # class attribute හරහා fallback
     impact_span_fallback = impact_td.find('span')
     
     if impact_span_fallback:
@@ -107,7 +165,6 @@ def get_latest_event():
         return None
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    # 'calendar__row--is-past' සහිත පේළි පමණක් සලකා බැලීම
     rows = soup.find_all("tr", class_="calendar__row")
 
     # අලුත්ම event එක සොයා ගැනීම සඳහා ආපසු හැරවීම
@@ -123,12 +180,14 @@ def get_latest_event():
         title_td = row.find("td", class_="calendar__event")
         actual_td = row.find("td", class_="calendar__actual")
         previous_td = row.find("td", class_="calendar__previous")
+        forecast_td = row.find("td", class_="calendar__forecast") 
         
-        if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td]):
+        if not all([event_id, currency_td, title_td, time_td, actual_td, previous_td, forecast_td]):
             continue
 
         actual = actual_td.text.strip()
         previous = previous_td.text.strip() if previous_td else "-"
+        forecast = forecast_td.text.strip() if forecast_td else "-"
         
         # Actual අගය නොමැති නම් (තවමත් නිවේදනය කර නොමැති නම්), මඟ හරින්න
         if not actual or actual == "-" or actual == "":
@@ -149,6 +208,7 @@ def get_latest_event():
             "time": time_text,
             "actual": actual,
             "previous": previous,
+            "forecast": forecast, 
             "impact": impact_text
         }
     return None
@@ -172,7 +232,9 @@ def send_event(event):
     else:
         impact_level = "⚪ Unknown"
     
-    comparison, reaction = analyze_comparison(event['actual'], event['previous'])
+    # --- NEW: Gemini AI Analysis ලබා ගැනීම ---
+    ai_analysis_text = get_ai_market_analysis(event)
+    # ------------------------------------------
 
     msg = f"""🛑 *Breaking News* 📰
 
@@ -184,12 +246,14 @@ def send_event(event):
 
 🔥 *Impact:* {impact_level}
 
-📊 *Data Comparison:* {comparison}
-
 📈 *Actual:* {event['actual']}
+📊 *Forecast:* {event['forecast']}
 📉 *Previous:* {event['previous']}
 
-🔮 *Market Forecast:* {reaction}
+---
+🧠 *AI Market Analysis (සිංහල/English):*
+{ai_analysis_text}
+---
 
 🚀 *Dev: Mr Chamo 🇱🇰*
 """
@@ -204,9 +268,8 @@ def send_event(event):
 
 def run_bot_loop():
     """Bot Loop එක වෙනම Thread එකක ක්‍රියාත්මක කිරීමට."""
-    print("Forex Bot Loop Started. Checking every 60 seconds...")
+    print("Forex Bot Loop Started. Checking every 10 seconds...")
     # ආරම්භයේදී, දැනටමත් සම්පූර්ණ කර ඇති event id ටික ලබා ගනී.
-    # මේක නැවත යැවීම වැලැක්වීමට උපකාරී වේ.
     initial_event = get_latest_event()
     if initial_event:
         sent_event_ids.add(initial_event['id'])
@@ -228,7 +291,7 @@ def run_bot_loop():
         except Exception as e:
             print(f"General Error in Bot Loop: {e}")
         
-        # 60 තත්පර පොරොත්තු කාලය (Scraping rate අඩු කිරීම සඳහා)
+        # 10 තත්පර පොරොත්තු කාලය: ඉක්මන් ප්‍රතිචාර සඳහා 10s යනු වඩාත් සුදුසුයි.
         time.sleep(10)
 
 # ----------------------------------------------------
@@ -251,6 +314,23 @@ def status():
         "bot_name": "ForexNewsBot",
         "last_checked": datetime.now(pytz.timezone('Asia/Colombo')).strftime('%Y-%m-%d %H:%M:%S %Z')
     }, 200
+
+@app.route('/test')
+def test():
+    """Test route to send the latest event regardless of sent_event_ids."""
+    event = get_latest_event()
+    if event:
+        send_event(event)
+        return {
+            "status": "success",
+            "message": f"Test message sent for event: {event['title']}",
+            "event_id": event['id']
+        }, 200
+    else:
+        return {
+            "status": "error",
+            "message": "No event found to send"
+        }, 404
 
 # ----------------------------------------------------
 # 6. Execution Block (ක්‍රියාත්මක කිරීම)
