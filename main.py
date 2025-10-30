@@ -14,10 +14,10 @@ from threading import Thread
 # ----------------------------------------------------
 
 # Environment variables වලින් Tokens සහ IDs ලබා ගනී
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+BOT_TOKEN = "8299929776:AAEFqh0J0kVqzioFF2ft5okOtQqO_8evviY"
+CHAT_ID = "-1003177936060"
 # Gemini API Key එක environment variable වෙතින් ලබා ගනී
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") 
+GEMINI_API_KEY = "AIzaSyDDmFq7B3gTazrcrI_J4J7VhB9YdFyTCaU"
 # Stable model එක භාවිතා කිරීමට යාවත්කාලීන කරන ලදී
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 URL = "https://www.forexfactory.com/calendar"
