@@ -22,7 +22,7 @@ GEMINI_API_KEY = "AIzaSyDDmFq7B3gTazrcrI_J4J7VhB9YdFyTCaU"
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 URL = "https://www.forexfactory.com/calendar"
 # Flask Port එක Environment variable වෙතින් ලබා ගනී, නොමැතිනම් 5000
-PORT = int(os.getenv("PORT", 5000)) 
+PORT = "5000"
 
 # Bot object එක නිර්මාණය කිරීම
 if not BOT_TOKEN:
